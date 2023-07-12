@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compute a risk for TB from satellite images."""
 
+import json
 import pathlib
 from functools import partial
 
@@ -93,8 +94,9 @@ def merge_tiles(
     """
     cities = geopd.GeoDataFrame.from_file(cities_file)
 
-    for city in cities.iterfeatures(show_bbox=True, drop_id=True):
+    for index, city in enumerate(cities.iterfeatures(show_bbox=True, drop_id=True)):
         city_bbox = city["bbox"]
+        city_geometry = shapely.from_geojson(json.dumps(city))
 
         # TODO: filter out tiles outside the city feature.
 
@@ -112,6 +114,11 @@ def merge_tiles(
         image = np.zeros((height, width, 3))
 
         for tile in mercantile.tiles(*city_bbox, zooms=zoom):
+            # check if tile is inside the city borders
+            tile_feature = shapely.from_geojson(json.dumps(mercantile.feature(tile)))
+            if not shapely.intersects(city_geometry, tile_feature):
+                continue
+
             flnm = pathlib.Path(tilename_fmt.format(x=tile.x, y=tile.y, z=zoom))
             if flnm.is_file():
                 tile_img = Image.open(flnm)
@@ -119,7 +126,7 @@ def merge_tiles(
                 indy = (tile_ll.y - tile.y) * 256
 
                 # add tile while inverting y axis
-                image[indy: indy + 256, indx: indx + 256, :] = np.asarray(tile_img)[::-1, :, :]
+                image[indy : indy + 256, indx : indx + 256, :] = np.asarray(tile_img)[::-1, :, :]
 
         image = np.asarray(image, dtype=np.uint8)
 
@@ -128,8 +135,16 @@ def merge_tiles(
         resx = (bbox_ur.east - bbox_ll.west) / width
         resy = (bbox_ur.north - bbox_ll.south) / height
         transform = Affine.translation(bbox_ll.west, bbox_ll.south) * Affine.scale(resx, resy)
+
+        mask = riofeats.rasterize(
+            [(city["geometry"], 1)], out_shape=image.shape[:2], transform=transform
+        )
+        image *= mask.reshape(*mask.shape, 1)
+
+        # save to file
         with rasterio.open(
-            f"/tmp/new{city['properties']['name']}.tif",
+            # f"/tmp/new{city['properties'].get('name', str(index))}.tif",
+            outfile_fmt.format(city["properties"].get("name", str(index))),
             "w",
             driver="GTiff",
             height=image.shape[0],
@@ -138,6 +153,9 @@ def merge_tiles(
             dtype=image.dtype,
             crs="+proj=latlong",
             transform=transform,
+            compress="jpeg",
+            num_threads="all_cpus",
+            tiled=True,
         ) as fout:
             fout.write(image[:, :, 0], 1)
             fout.write(image[:, :, 1], 2)
@@ -152,11 +170,19 @@ def satellite(imagery: str, output: str):
         satimage = np.moveaxis(np.asarray(raster.read()), 0, -1)
 
     sat_filter = get_sat_filter(satimage, bounds)
-    profile.update({
-        'nodata': 0,
-        "count": 1,
-        "dtype": np.float32
-    })
+    profile.update(
+        {
+            "nodata": 0,
+            "count": 1,
+            "dtype": np.float32,
+            "compress": "zstd",
+            "predictor": 3,
+            "num_threads": "all_cpus",
+            "tiled": True,
+            "blockxsize": 256,
+            "blockysize": 256,
+        }
+    )
 
     with rasterio.open(output, "w", **profile) as dst:
         dst.write(sat_filter, indexes=1)
@@ -194,42 +220,42 @@ def canny(fig):
     return edges
 
 
-def green_hsl(img):
+def green_hsl(img: np.ndarray):
     """Find green throuh hsl decomposition."""
     # blur a bit averaging
-    init_img = cv2.filter2D(img[:, :, ::-1], -1, np.ones((3, 3)) / 9)  # convert to BGR
+    # convert to BGR
+    init_img = img[:, :, ::-1]
     # convert to hsv
     hsv = cv2.cvtColor(init_img, cv2.COLOR_BGR2HSV)
 
+    # green range in HSV
     hsv_min = (15, 0, 0)  # black
     hsv_max = (120, 255, 120)  # light green
     mask = cv2.inRange(hsv, hsv_min, hsv_max)
 
     # Replace small polygons in source with value of their largest neighbor.
-    mask = rasterio.features.sieve(
-        mask.astype(rasterio.int16),
-        50,
-    )
-
-    return 255 - mask
+    # and invert the filter (0 -> green; 1 -> no green)
+    return 255 - rasterio.features.sieve(mask.astype(rasterio.int16), 50)
 
 
-def filtr(density, green):
+def filtr(density, green, smoothing: int = 41):
     """Combine filters on green and dense areas."""
-    kernel = np.ones((41, 41)) / (41**2)
+    print("Combining filters together")
+    kernel = np.ones((smoothing, smoothing)) / (smoothing**2)
 
     grn = cv2.filter2D(green, -1, kernel).astype(float) / 255.0
-    grn[grn < 0.5] = 0
+    # add a s-shape instead of a step function
+    grn = 1 / (1 + np.exp(-10 * (grn - 0.5)))
 
     dens = cv2.filter2D(density, -1, kernel).astype(float) / 255.0
-    dens = dens * grn
+    dens *= grn
 
-    pdens = 0.2
-    # return np.clip(0, 1, (dens / pdens)**2)
+    pdens = np.percentile(dens[dens > 0], 98)
     return np.clip(0, 1, dens / pdens)
 
 
 def get_sat_filter(img, bounds, mask=None):
+    """Compute filters and combine them."""
     print("Computing the canny filter")
     mat_filter = canny(img)
     print("Computing the green filter")
