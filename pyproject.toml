@@ -8,9 +8,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cartotb_satellite"
 dynamic = ["version"]
-readme = "README.md"
-license = {text = 'See LICENSE'}
-description = "Carto TB satellite images"
+readme = "readme.md"
+license = {text = 'see license'}
+description = "carto tb satellite images"
 requires-python = ">=3.10"
 dependencies = []
 [[project.authors]]
