@@ -1,3 +1,3 @@
-"""python_project_template"""
+"""cartotb_satellite"""
 
 __version__ = "0.1.0"
