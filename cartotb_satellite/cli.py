@@ -20,7 +20,9 @@ def main(args):
     ########################################
     # stick together all tiles to geotiff
     if "format" in args:
-        satellite.merge_tiles(args.boundaries, tilename_fmt=args.format, outfile_fmt=args.output)
+        satellite.merge_tiles(
+            args.boundaries, tilename_fmt=args.format, outfile_fmt=args.output
+        )
 
     ########################################
     # find risk
@@ -33,11 +35,11 @@ def main(args):
 def parse():
     """Parse Args."""
     args = argparse.ArgumentParser(
-        prog="cartotb_satellite", description="Compute disease risk from satellite images."
+        prog="cartotb_satellite",
+        description="Compute disease risk from satellite images.",
     )
     subcommands = args.add_subparsers(
-        help="Sub commands",
-        description="Action to be perfomed."
+        help="Sub commands", description="Action to be perfomed."
     )
 
     ########################################
@@ -46,10 +48,13 @@ def parse():
     args_cities = subcommands.add_parser(
         "cities",
         help="Find cities from population count.",
-        description="Find cities from population count."
+        description="Find cities from population count.",
     )
     args_cities.add_argument(
-        "--threshold", type=float, default=6000, help="population count threshold (per km^2)."
+        "--threshold",
+        type=float,
+        default=6000,
+        help="population count threshold (per km^2).",
     )
     args_cities.add_argument(
         "-o",
@@ -58,7 +63,9 @@ def parse():
         help="filename for the output files (default: `cities.geojson`)",
         default="cities.geojson",
     )
-    args_cities.add_argument("input", type=str, help="path to population count file (GeoTIFF).")
+    args_cities.add_argument(
+        "input", type=str, help="path to population count file (GeoTIFF)."
+    )
 
     ########################################
     # merge tiles to geotif
@@ -66,7 +73,7 @@ def parse():
     args_tiles = subcommands.add_parser(
         "tiles",
         help="Merge satellite tiles to a GeoTIFF image.",
-        description="Merge satellite tiles to a GeoTIFF image."
+        description="Merge satellite tiles to a GeoTIFF image.",
     )
     args_tiles.add_argument(
         "-b",
@@ -75,7 +82,10 @@ def parse():
         help="Geojson file with city boundaries as features.",
     )
     args_tiles.add_argument(
-        "-f", "--format", required=True, help="File path as `path/to/tile_{x}_{y}_{z}.png`"
+        "-f",
+        "--format",
+        required=True,
+        help="File path as `path/to/tile_{x}_{y}_{z}.png`",
     )
     args_tiles.add_argument(
         "-o",
@@ -91,7 +101,7 @@ def parse():
     args_risk = subcommands.add_parser(
         "risk",
         help="Build the risk index map.",
-        description="Build the risk index map."
+        description="Build the risk index map.",
     )
     args_risk.add_argument(
         "-o",

@@ -66,7 +66,10 @@ def find_cities(
         {
             "type": "FeatureCollection",
             "features": [
-                {"geometry": shapely.geometry.shape(shape), "properties": {"name": f"city_{i}"}}
+                {
+                    "geometry": shapely.geometry.shape(shape),
+                    "properties": {"name": f"city_{i}"},
+                }
                 for i, (shape, value) in enumerate(shapes)
                 if value > 0.0
             ],
@@ -76,7 +79,10 @@ def find_cities(
 
 
 def merge_tiles(
-    cities_file: str, tilename_fmt: str, outfile_fmt: int = "city_{}.geotif", zoom: int = ZOOM
+    cities_file: str,
+    tilename_fmt: str,
+    outfile_fmt: str = "city_{}.geotif",
+    zoom: int = ZOOM,
 ):
     """Build the map from the tiles.
 
@@ -126,7 +132,9 @@ def merge_tiles(
                 indy = (tile_ll.y - tile.y) * 256
 
                 # add tile while inverting y axis
-                image[indy : indy + 256, indx : indx + 256, :] = np.asarray(tile_img)[::-1, :, :]
+                image[indy : indy + 256, indx : indx + 256, :] = np.asarray(tile_img)[
+                    ::-1, :, :
+                ]
 
         image = np.asarray(image, dtype=np.uint8)
 
@@ -134,7 +142,9 @@ def merge_tiles(
         bbox_ur = mercantile.bounds(tile_ur)
         resx = (bbox_ur.east - bbox_ll.west) / width
         resy = (bbox_ur.north - bbox_ll.south) / height
-        transform = Affine.translation(bbox_ll.west, bbox_ll.south) * Affine.scale(resx, resy)
+        transform = Affine.translation(bbox_ll.west, bbox_ll.south) * Affine.scale(
+            resx, resy
+        )
 
         mask = riofeats.rasterize(
             [(city["geometry"], 1)], out_shape=image.shape[:2], transform=transform
@@ -143,7 +153,6 @@ def merge_tiles(
 
         # save to file
         with rasterio.open(
-            # f"/tmp/new{city['properties'].get('name', str(index))}.tif",
             outfile_fmt.format(city["properties"].get("name", str(index))),
             "w",
             driver="GTiff",
@@ -203,7 +212,9 @@ def area(polygon, coords="latlong"):
     proj = partial(
         pyproj.transform,
         pyproj.Proj(proj=coords),
-        pyproj.Proj(proj="aea", lat_1=square.bounds[1], lat_2=square.bounds[3], datum="WGS84"),
+        pyproj.Proj(
+            proj="aea", lat_1=square.bounds[1], lat_2=square.bounds[3], datum="WGS84"
+        ),
     )
 
     return ops.transform(proj, square).area
